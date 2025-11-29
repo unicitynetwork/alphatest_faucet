@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ALPHA Test Faucet</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      min-height: 100vh;
+      color: #e0e0e0;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 10px;
+      color: #00d4ff;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #888;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .card h2 {
+      font-size: 18px;
+      margin-bottom: 16px;
+      color: #00d4ff;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+      color: #aaa;
+    }
+
+    input, textarea {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.3);
+      color: #fff;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 14px;
+    }
+
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: #00d4ff;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    button {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+      color: #000;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .result {
+      margin-top: 16px;
+      padding: 16px;
+      border-radius: 8px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 13px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .result.success {
+      background: rgba(0, 255, 128, 0.1);
+      border: 1px solid rgba(0, 255, 128, 0.3);
+      color: #00ff80;
+    }
+
+    .result.error {
+      background: rgba(255, 64, 64, 0.1);
+      border: 1px solid rgba(255, 64, 64, 0.3);
+      color: #ff6464;
+    }
+
+    .result.info {
+      background: rgba(0, 212, 255, 0.1);
+      border: 1px solid rgba(0, 212, 255, 0.3);
+      color: #00d4ff;
+    }
+
+    .balance-info {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .balance-item {
+      padding: 12px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+    }
+
+    .balance-item .label {
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 4px;
+    }
+
+    .balance-item .value {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .balance-item .value.highlight {
+      color: #00d4ff;
+    }
+
+    .stats {
+      display: flex;
+      justify-content: space-around;
+      text-align: center;
+    }
+
+    .stat-item .number {
+      font-size: 24px;
+      font-weight: bold;
+      color: #00d4ff;
+    }
+
+    .stat-item .label {
+      font-size: 12px;
+      color: #888;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 30px;
+      color: #666;
+      font-size: 12px;
+    }
+
+    .footer a {
+      color: #00d4ff;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>ALPHA Test Faucet</h1>
+    <p class="subtitle">Mint L3 ALPHA_TEST tokens from your L1 ALPHA balance</p>
+
+    <!-- Stats Card -->
+    <div class="card" id="stats-card">
+      <h2>Faucet Statistics</h2>
+      <div class="stats" id="stats">
+        <div class="stat-item">
+          <div class="number" id="stat-total">-</div>
+          <div class="label">Total Addresses</div>
+        </div>
+        <div class="stat-item">
+          <div class="number" id="stat-available">-</div>
+          <div class="label">Available</div>
+        </div>
+        <div class="stat-item">
+          <div class="number" id="stat-minted">-</div>
+          <div class="label">Minted</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Check Balance Card -->
+    <div class="card">
+      <h2>Check Balance</h2>
+      <div class="form-group">
+        <label for="check-address">L1 Alpha Address</label>
+        <input type="text" id="check-address" placeholder="alpha1q..." />
+      </div>
+      <button onclick="checkBalance()">Check Balance</button>
+      <div id="balance-result"></div>
+    </div>
+
+    <!-- Mint Request Card -->
+    <div class="card">
+      <h2>Request Mint</h2>
+      <p style="color: #888; font-size: 13px; margin-bottom: 16px;">
+        Sign a message with your L1 private key to mint tokens to your L3 Unicity ID.
+      </p>
+      <div class="form-group">
+        <label for="mint-address">L1 Alpha Address</label>
+        <input type="text" id="mint-address" placeholder="alpha1q..." />
+      </div>
+      <div class="form-group">
+        <label for="mint-unicity-id">Destination Unicity ID</label>
+        <input type="text" id="mint-unicity-id" placeholder="Your L3 Unicity ID (hex)" />
+      </div>
+      <div class="form-group">
+        <label for="mint-amount">Amount (satoshis)</label>
+        <input type="number" id="mint-amount" placeholder="Amount in smallest units" />
+      </div>
+      <div class="form-group">
+        <label for="mint-signature">Signature (65 bytes hex)</label>
+        <textarea id="mint-signature" placeholder="Sign message: address:unicityId:amount"></textarea>
+      </div>
+      <button onclick="requestMint()">Submit Mint Request</button>
+      <div id="mint-result"></div>
+    </div>
+
+    <!-- Info Card -->
+    <div class="card">
+      <h2>How to Sign</h2>
+      <p style="color: #aaa; font-size: 13px; line-height: 1.6;">
+        1. Create the message: <code style="color: #00d4ff;">address:unicityId:amount</code><br>
+        2. Sign with Bitcoin message signing (prefix: "Alpha Signed Message:\n")<br>
+        3. Use your L1 private key to create a 65-byte signature<br>
+        4. Paste the signature above and submit
+      </p>
+    </div>
+
+    <div class="footer">
+      <p>ALPHA Test Token (ALPHT) - For demonstration purposes only</p>
+      <p><a href="https://github.com/unicitynetwork" target="_blank">Unicity Network</a></p>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = '';  // Same origin
+
+    // Load stats on page load
+    document.addEventListener('DOMContentLoaded', loadStats);
+
+    async function loadStats() {
+      try {
+        const response = await fetch(`${API_BASE}/api/v1/faucet/stats`);
+        const data = await response.json();
+
+        if (data.success) {
+          document.getElementById('stat-total').textContent = data.totalAddresses?.toLocaleString() || '0';
+          document.getElementById('stat-available').textContent = data.availableAddresses?.toLocaleString() || '0';
+          document.getElementById('stat-minted').textContent = data.mintedAddresses?.toLocaleString() || '0';
+        }
+      } catch (error) {
+        console.error('Failed to load stats:', error);
+      }
+    }
+
+    async function checkBalance() {
+      const address = document.getElementById('check-address').value.trim();
+      const resultDiv = document.getElementById('balance-result');
+
+      if (!address) {
+        showResult(resultDiv, 'error', 'Please enter an address');
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/api/v1/faucet/balance/${encodeURIComponent(address)}`);
+        const data = await response.json();
+
+        if (data.success) {
+          const html = `
+            <div class="balance-info">
+              <div class="balance-item">
+                <div class="label">Token</div>
+                <div class="value">${data.symbol} (${data.name})</div>
+              </div>
+              <div class="balance-item">
+                <div class="label">Status</div>
+                <div class="value ${data.spent ? 'error' : 'highlight'}">${data.spent ? 'Already Minted' : 'Available'}</div>
+              </div>
+              <div class="balance-item">
+                <div class="label">Available Amount</div>
+                <div class="value highlight">${data.amount} ${data.symbol}</div>
+              </div>
+              <div class="balance-item">
+                <div class="label">In Satoshis</div>
+                <div class="value">${data.amountInSmallUnits?.toLocaleString()}</div>
+              </div>
+              <div class="balance-item">
+                <div class="label">Initial Amount</div>
+                <div class="value">${data.initialAmount} ${data.symbol}</div>
+              </div>
+              <div class="balance-item">
+                <div class="label">In Snapshot</div>
+                <div class="value">${data.inSnapshot ? 'Yes' : 'No'}</div>
+              </div>
+            </div>
+          `;
+          resultDiv.innerHTML = html;
+          resultDiv.className = 'result info';
+
+          // Auto-fill mint form
+          if (!data.spent && data.amountInSmallUnits > 0) {
+            document.getElementById('mint-address').value = address;
+            document.getElementById('mint-amount').value = data.amountInSmallUnits;
+          }
+        } else {
+          showResult(resultDiv, 'error', data.error || 'Unknown error');
+        }
+      } catch (error) {
+        showResult(resultDiv, 'error', `Request failed: ${error.message}`);
+      }
+    }
+
+    async function requestMint() {
+      const address = document.getElementById('mint-address').value.trim();
+      const unicityId = document.getElementById('mint-unicity-id').value.trim();
+      const amount = parseInt(document.getElementById('mint-amount').value, 10);
+      const signature = document.getElementById('mint-signature').value.trim();
+      const resultDiv = document.getElementById('mint-result');
+
+      if (!address || !unicityId || !amount || !signature) {
+        showResult(resultDiv, 'error', 'Please fill in all fields');
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/api/v1/faucet/request`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            l1_addr: address,
+            unicityId: unicityId,
+            amount: amount,
+            signature: signature
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          showResult(resultDiv, 'success', `Mint successful!\n\nTx ID: ${data.txId}\nAmount: ${data.amount} ALPHT\nDestination: ${data.unicityId}`);
+          loadStats();  // Refresh stats
+        } else {
+          showResult(resultDiv, 'error', data.error || 'Mint failed');
+        }
+      } catch (error) {
+        showResult(resultDiv, 'error', `Request failed: ${error.message}`);
+      }
+    }
+
+    function showResult(element, type, message) {
+      element.className = `result ${type}`;
+      element.textContent = message;
+    }
+  </script>
+</body>
+</html>

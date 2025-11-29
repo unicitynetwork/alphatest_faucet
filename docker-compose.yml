@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  faucet:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: alphatest-faucet
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_PATH=/app/data/faucet.db
+      - FULCRUM_ENDPOINT=${FULCRUM_ENDPOINT:-wss://fulcrum.unicity.network:50004}
+      - FAUCET_ENDPOINT=${FAUCET_ENDPOINT:-https://faucet.unicity.network/}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - CORS_ORIGIN=${CORS_ORIGIN:-*}
+    volumes:
+      - faucet-data:/app/data
+      - faucet-config:/app/config
+    networks:
+      - faucet-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    labels:
+      - "com.alphatest.faucet=true"
+
+  nginx:
+    image: nginx:alpine
+    container_name: alphatest-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - certbot-conf:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+    networks:
+      - faucet-network
+    depends_on:
+      - faucet
+    command: '/bin/sh -c ''while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g "daemon off;"'''
+
+  certbot:
+    image: certbot/certbot
+    container_name: alphatest-certbot
+    restart: unless-stopped
+    volumes:
+      - certbot-conf:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  faucet-data:
+    driver: local
+  faucet-config:
+    driver: local
+  certbot-conf:
+    driver: local
+  certbot-www:
+    driver: local
+
+networks:
+  faucet-network:
+    driver: bridge
