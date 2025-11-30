@@ -64,14 +64,16 @@ if [ ! -f "${DATABASE_FILE}" ]; then
     echo ""
 fi
 
-# Save current configuration
-cat > "${CONFIG_FILE}" << EOF
+# Save current configuration (non-fatal if write fails)
+if [ -w "${CONFIG_DIR}" ] || [ -w "${CONFIG_FILE}" ]; then
+    cat > "${CONFIG_FILE}" << EOF
 {
   "fulcrumEndpoint": "${FULCRUM_ENDPOINT}",
   "faucetEndpoint": "${FAUCET_ENDPOINT}",
   "lastStarted": "$(date -Iseconds)"
 }
 EOF
+fi
 
 echo "Starting faucet proxy server..."
 echo ""

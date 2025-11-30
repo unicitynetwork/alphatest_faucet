@@ -2,29 +2,68 @@
 #
 # restore-db.sh - Restore faucet database from backup
 #
-# Usage: ./restore-db.sh BACKUP_FILE
+# Usage: ./restore-db.sh [OPTIONS] BACKUP_FILE
+#
+# Options:
+#   -h, --help     Display this help message
+#   -y, --yes      Skip confirmation prompt
+#
+# Arguments:
+#   BACKUP_FILE    Backup file to restore from (local path or s3://bucket/path)
+#
+# Examples:
+#   ./restore-db.sh backup.tar.gz              # Restore from local file
+#   ./restore-db.sh s3://bucket/backup.tar.gz  # Restore from S3
+#   ./restore-db.sh --yes backup.tar.gz        # Skip confirmation
+#   ./restore-db.sh --help                     # Show this help
 #
 # WARNING: This will stop the faucet service and replace the current database.
 #
 
 set -euo pipefail
 
+##
+## Display usage information
+##
+usage() {
+    sed -n '2,/^[^#]/{ /^#/s/^# \{0,1\}//p }' "$0"
+    exit 0
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 COMPOSE_PROJECT="alphatest_faucet"
 DATA_VOLUME="${COMPOSE_PROJECT}_faucet-data"
 CONFIG_VOLUME="${COMPOSE_PROJECT}_faucet-config"
+SKIP_CONFIRM=false
+BACKUP_FILE=""
 
-if [[ $# -lt 1 ]]; then
-    echo "Usage: $0 BACKUP_FILE"
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            usage
+            ;;
+        -y|--yes)
+            SKIP_CONFIRM=true
+            shift
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            usage
+            ;;
+        *)
+            BACKUP_FILE="$1"
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$BACKUP_FILE" ]]; then
+    echo "Error: BACKUP_FILE is required"
     echo ""
-    echo "BACKUP_FILE can be:"
-    echo "  - Local .tar.gz file"
-    echo "  - S3 path (s3://bucket/path)"
-    exit 1
+    usage
 fi
-
-BACKUP_FILE="$1"
 
 echo "=========================================="
 echo "  ALPHA Test Faucet - Database Restore"
@@ -64,11 +103,13 @@ echo "  1. Stop the faucet container"
 echo "  2. Replace the current database with the backup"
 echo "  3. Restart the faucet container"
 echo ""
-read -rp "Are you sure you want to continue? (yes/no): " CONFIRM
 
-if [[ "$CONFIRM" != "yes" ]]; then
-    echo "Restoration cancelled."
-    exit 0
+if [[ "$SKIP_CONFIRM" == false ]]; then
+    read -rp "Are you sure you want to continue? (yes/no): " CONFIRM
+    if [[ "$CONFIRM" != "yes" ]]; then
+        echo "Restoration cancelled."
+        exit 0
+    fi
 fi
 
 echo ""

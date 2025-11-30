@@ -5,14 +5,23 @@
 # Usage: ./run-container.sh [OPTIONS]
 #
 # Options:
-#   --endpoint URL    Fulcrum WebSocket endpoint (default: wss://fulcrum.unicity.network:50004)
-#   --rpc URL         Alpha full node RPC URL for snapshot
-#   --snapshot BLOCK  Block number for balance snapshot
-#   --faucet URL      Upstream faucet URL (default: https://faucet.unicity.network/)
-#   --domain DOMAIN   Domain for SSL certificate
-#   --reset           Erase volume and rescan balances
-#   --no-ssl          Skip nginx/certbot (direct access on port 3000)
-#   --help            Display this help message
+#   --endpoint URL       Fulcrum WebSocket endpoint (default: wss://fulcrum.unicity.network:50004)
+#   --rpc URL            Alpha full node RPC URL for snapshot (auto-detected if alpha-node container exists)
+#   --snapshot BLOCK     Block number for balance snapshot
+#   --faucet URL         Upstream faucet URL (default: https://faucet.unicity.network/)
+#   --port PORT          Host port for faucet service (default: 3000)
+#   --domain DOMAIN      Domain for SSL certificate
+#   --alpha-container    Name of the Alpha node container (default: alpha-node)
+#   --reset              Erase volume and rescan balances
+#   --no-ssl             Skip nginx/certbot (direct access)
+#   --help               Display this help message
+#
+# Environment Variables:
+#   ALPHA_CONTAINER      Name of Alpha node container (default: alpha-node)
+#   ALPHA_RPC_PORT       RPC port inside Alpha container (default: 8589)
+#   ALPHA_RPC_USER       RPC username (default: user)
+#   ALPHA_RPC_PASS       RPC password (default: password)
+#   FAUCET_PORT          Host port for faucet (default: 3000)
 #
 
 set -euo pipefail
@@ -40,12 +49,18 @@ FAUCET=""
 DOMAIN=""
 RESET=false
 NO_SSL=false
+ALPHA_CONTAINER="${ALPHA_CONTAINER:-alpha-node}"
+ALPHA_NETWORK=""
+ALPHA_RPC_PORT="${ALPHA_RPC_PORT:-8589}"
+ALPHA_RPC_USER="${ALPHA_RPC_USER:-user}"
+ALPHA_RPC_PASS="${ALPHA_RPC_PASS:-password}"
+FAUCET_PORT="${FAUCET_PORT:-3000}"
 
-#######################################
-# Display usage information
-#######################################
+##
+## Display usage information
+##
 usage() {
-    grep '^#' "$0" | grep -v '#!/' | sed 's/^# \?//'
+    sed -n '2,/^[^#]/{ /^#/s/^# \{0,1\}//p }' "$0"
     exit 0
 }
 
@@ -78,8 +93,16 @@ parse_args() {
                 FAUCET="$2"
                 shift 2
                 ;;
+            --port)
+                FAUCET_PORT="$2"
+                shift 2
+                ;;
             --domain)
                 DOMAIN="$2"
+                shift 2
+                ;;
+            --alpha-container)
+                ALPHA_CONTAINER="$2"
                 shift 2
                 ;;
             --reset)
@@ -118,6 +141,86 @@ check_docker() {
     if ! command -v docker-compose &>/dev/null && ! docker compose version &>/dev/null; then
         echo "Error: Docker Compose is not installed"
         exit 1
+    fi
+}
+
+#######################################
+# Discover Alpha node container network
+#######################################
+discover_alpha_network() {
+    if ! docker inspect "$ALPHA_CONTAINER" &>/dev/null; then
+        log "Alpha container '$ALPHA_CONTAINER' not found - will need manual RPC URL"
+        return 1
+    fi
+
+    # Get the first network the alpha container is connected to
+    local networks
+    networks=$(docker inspect "$ALPHA_CONTAINER" \
+        --format='{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null) || true
+
+    # Get first network from the list
+    ALPHA_NETWORK="${networks%% *}"
+
+    if [[ -z "$ALPHA_NETWORK" ]]; then
+        log "Warning: Could not detect Alpha container network"
+        return 1
+    fi
+
+    log "Discovered Alpha network: $ALPHA_NETWORK"
+    export ALPHA_NETWORK
+    return 0
+}
+
+#######################################
+# Auto-detect RPC URL from Alpha container
+#######################################
+detect_alpha_rpc() {
+    if [[ -n "$RPC_URL" ]]; then
+        # RPC URL already specified
+        log "Using provided RPC URL: $RPC_URL"
+        return 0
+    fi
+
+    if ! docker inspect "$ALPHA_CONTAINER" &>/dev/null; then
+        return 1
+    fi
+
+    # Check if alpha container is running
+    local state
+    state=$(docker inspect "$ALPHA_CONTAINER" --format='{{.State.Running}}' 2>/dev/null) || state="false"
+    if [[ "$state" != "true" ]]; then
+        log "Warning: Alpha container '$ALPHA_CONTAINER' is not running"
+        return 1
+    fi
+
+    # Auto-construct RPC URL using container name
+    RPC_URL="http://${ALPHA_CONTAINER}:${ALPHA_RPC_PORT}"
+    log "Auto-detected RPC URL: $RPC_URL"
+    return 0
+}
+
+#######################################
+# Test RPC connection
+#######################################
+test_rpc_connection() {
+    if [[ -z "$RPC_URL" ]]; then
+        return 1
+    fi
+
+    log "Testing RPC connection to $RPC_URL..."
+
+    # Try to get blockchain info (basic RPC test)
+    local response
+    if response=$(docker run --rm --network="$ALPHA_NETWORK" alpine/curl:latest \
+        -sf --max-time 5 \
+        -X POST "$RPC_URL" \
+        -H "Content-Type: application/json" \
+        -d '{"method":"getblockchaininfo","params":[],"id":1}' 2>/dev/null); then
+        log "RPC connection successful"
+        return 0
+    else
+        log "Warning: RPC connection test failed"
+        return 1
     fi
 }
 
@@ -238,6 +341,7 @@ run_snapshot() {
     if [[ -z "$RPC_URL" ]]; then
         echo ""
         echo "Alpha RPC URL required for snapshot."
+        echo "Tip: Start an alpha-node container to enable auto-detection"
         read -rp "Enter Alpha full node RPC URL: " RPC_URL
         if [[ -z "$RPC_URL" ]]; then
             echo "Error: RPC URL is required"
@@ -247,13 +351,34 @@ run_snapshot() {
 
     log "Running snapshot for block $SNAPSHOT..."
 
+    # Build network argument if alpha network discovered
+    local network_arg=""
+    if [[ -n "$ALPHA_NETWORK" ]]; then
+        network_arg="--network=$ALPHA_NETWORK"
+        log "Using network: $ALPHA_NETWORK"
+    fi
+
     # Run snapshot in a temporary container
-    docker run --rm \
+    # Copy source to writable location since npm ci needs to write node_modules
+    # shellcheck disable=SC2086
+    docker run --rm $network_arg \
         -v "$DATA_VOLUME:/app/data" \
         -v "$PROJECT_DIR:/app/src:ro" \
-        -w /app/src \
+        -w /app/build \
         node:20-alpine \
-        sh -c "npm ci --production && node cli/snapshot.js --rpc '$RPC_URL' --block $SNAPSHOT --output /app/data/faucet.db --fulcrum '$ENDPOINT' --faucet '$FAUCET'"
+        sh -c "
+            cp -r /app/src/package*.json /app/src/cli /app/src/src /app/build/ && \
+            npm ci --omit=dev && \
+            node cli/snapshot.js \
+                --rpc '$RPC_URL' \
+                --rpc-user '$ALPHA_RPC_USER' \
+                --rpc-pass '$ALPHA_RPC_PASS' \
+                --block $SNAPSHOT \
+                --output /app/data/faucet.db \
+                --fulcrum '$ENDPOINT' \
+                --faucet '$FAUCET' && \
+            chown -R 100:101 /app/data
+        "
 
     log "Snapshot complete"
 }
@@ -275,28 +400,45 @@ start_containers() {
     cd "$PROJECT_DIR"
 
     log "Stopping existing containers..."
-    docker compose down 2>/dev/null || docker-compose down 2>/dev/null || true
+    docker compose down 2>/dev/null || true
 
     # Export environment variables
     export FULCRUM_ENDPOINT="$ENDPOINT"
     export FAUCET_ENDPOINT="$FAUCET"
+    export FAUCET_PORT
+
+    # Ensure alpha network exists (create if not external, or skip if missing)
+    if [[ -n "$ALPHA_NETWORK" ]]; then
+        if docker network inspect "$ALPHA_NETWORK" &>/dev/null; then
+            log "Using existing network: $ALPHA_NETWORK"
+            export ALPHA_NETWORK
+        else
+            log "Warning: Network '$ALPHA_NETWORK' not found, creating it..."
+            docker network create "$ALPHA_NETWORK" 2>/dev/null || true
+            export ALPHA_NETWORK
+        fi
+    else
+        # No alpha network discovered, use a dummy value that will be created
+        export ALPHA_NETWORK="alphatest-faucet-net"
+        docker network create "$ALPHA_NETWORK" 2>/dev/null || true
+    fi
 
     log "Building containers..."
-    docker compose build --no-cache 2>/dev/null || docker-compose build --no-cache
+    docker compose build --no-cache
 
     if [[ "$NO_SSL" == true ]]; then
         log "Starting faucet container (no SSL)..."
-        docker compose up -d faucet 2>/dev/null || docker-compose up -d faucet
+        docker compose up -d faucet
     else
         log "Starting all containers..."
-        docker compose up -d 2>/dev/null || docker-compose up -d
+        docker compose up -d
     fi
 
     log "Waiting for health check..."
     sleep 10
 
     # Check health
-    if docker compose ps 2>/dev/null | grep -q "healthy" || docker-compose ps 2>/dev/null | grep -q "healthy"; then
+    if docker compose ps 2>/dev/null | grep -q "healthy"; then
         log "Faucet proxy is running and healthy"
     else
         log "Warning: Container may not be healthy yet"
@@ -318,6 +460,12 @@ main() {
     check_docker
     handle_reset
     load_config
+
+    # Auto-discover Alpha node network and RPC
+    if discover_alpha_network; then
+        detect_alpha_rpc
+    fi
+
     prompt_snapshot
     apply_defaults
     save_config
@@ -345,13 +493,15 @@ main() {
     echo "  Fulcrum:  $ENDPOINT"
     echo "  Faucet:   $FAUCET"
     echo "  Snapshot: Block $SNAPSHOT"
+    [[ -n "$ALPHA_NETWORK" ]] && echo "  Alpha Network: $ALPHA_NETWORK"
+    [[ -n "$RPC_URL" ]] && echo "  Alpha RPC: ${ALPHA_CONTAINER}:${ALPHA_RPC_PORT}"
     [[ -n "$DOMAIN" ]] && echo "  Domain:   $DOMAIN"
     echo ""
     echo "Access:"
     if [[ "$NO_SSL" == true ]]; then
-        echo "  http://localhost:3000"
+        echo "  http://localhost:$FAUCET_PORT"
     else
-        echo "  http://localhost:8080 (HTTP proxy)"
+        echo "  http://localhost:80 (HTTP proxy)"
         [[ -n "$DOMAIN" ]] && echo "  https://$DOMAIN (HTTPS)"
     fi
     echo ""
@@ -361,5 +511,12 @@ main() {
     echo "  Restart: docker compose restart"
     echo ""
 }
+
+# Check for help early (before banner)
+for arg in "$@"; do
+    if [[ "$arg" == "--help" ]] || [[ "$arg" == "-h" ]]; then
+        usage
+    fi
+done
 
 main "$@"

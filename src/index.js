@@ -134,5 +134,3 @@ async function start() {
 
 // Run if executed directly
 start();
-
-export { buildApp };

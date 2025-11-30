@@ -2,18 +2,74 @@
 #
 # init-ssl.sh - Initialize SSL certificates with Let's Encrypt
 #
-# Usage: ./init-ssl.sh DOMAIN [EMAIL]
+# Usage: ./init-ssl.sh [OPTIONS] DOMAIN [EMAIL]
+#
+# Options:
+#   -h, --help     Display this help message
+#   -f, --force    Force renewal even if certificates exist
+#
+# Arguments:
+#   DOMAIN         Domain name for SSL certificate (required)
+#   EMAIL          Email for Let's Encrypt notifications (default: admin@DOMAIN)
+#
+# Examples:
+#   ./init-ssl.sh example.com                   # Initialize SSL for domain
+#   ./init-ssl.sh example.com admin@example.com # With custom email
+#   ./init-ssl.sh --force example.com           # Force renewal
+#   ./init-ssl.sh --help                        # Show this help
+#
+# Requirements:
+#   - Docker and Docker Compose
+#   - Domain DNS must point to this server
+#   - Port 80 must be accessible for ACME challenge
 #
 
 set -euo pipefail
 
-if [[ $# -lt 1 ]]; then
-    echo "Usage: $0 DOMAIN [EMAIL]"
-    exit 1
+##
+## Display usage information
+##
+usage() {
+    sed -n '2,/^[^#]/{ /^#/s/^# \{0,1\}//p }' "$0"
+    exit 0
+}
+
+FORCE_RENEWAL=false
+DOMAIN=""
+EMAIL=""
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            usage
+            ;;
+        -f|--force)
+            FORCE_RENEWAL=true
+            shift
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            usage
+            ;;
+        *)
+            if [[ -z "$DOMAIN" ]]; then
+                DOMAIN="$1"
+            elif [[ -z "$EMAIL" ]]; then
+                EMAIL="$1"
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$DOMAIN" ]]; then
+    echo "Error: DOMAIN is required"
+    echo ""
+    usage
 fi
 
-DOMAIN="$1"
-EMAIL="${2:-admin@$DOMAIN}"
+EMAIL="${EMAIL:-admin@$DOMAIN}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
@@ -37,7 +93,7 @@ echo ""
 mkdir -p "$CERTBOT_CONF_DIR" "$CERTBOT_WWW_DIR" "$NGINX_CONF_DIR"
 
 # Check if certificates already exist
-if [[ -d "$CERTBOT_CONF_DIR/live/$DOMAIN" ]]; then
+if [[ -d "$CERTBOT_CONF_DIR/live/$DOMAIN" ]] && [[ "$FORCE_RENEWAL" == false ]]; then
     echo "Certificates already exist for $DOMAIN"
     read -rp "Replace existing certificates? (y/n): " REPLACE
     if [[ "$REPLACE" != "y" ]]; then

@@ -136,10 +136,15 @@ async function scanUtxoSet() {
 /**
  * Fallback: Scan blocks one by one
  * This is slower but works on all nodes
+ *
+ * Maintains a proper UTXO set:
+ * - Add outputs when created
+ * - Remove outputs when spent
+ * - Aggregate by address at the end
  */
 async function scanBlockByBlock() {
-  const balances = new Map();
-  const spent = new Set();
+  // Track individual UTXOs: txid:vout -> {address, amount}
+  const utxoSet = new Map();
 
   console.log(`Scanning blocks 0 to ${opts.block}...`);
 
@@ -152,24 +157,17 @@ async function scanBlockByBlock() {
     const block = await rpcCall('getblock', [blockHash, 2]); // verbosity=2 for full tx details
 
     for (const tx of block.tx) {
-      // Process inputs (mark as spent)
+      // First: Remove spent outputs from UTXO set
       for (const vin of tx.vin) {
         if (vin.txid) {
           const key = `${vin.txid}:${vin.vout}`;
-          spent.add(key);
+          utxoSet.delete(key);
         }
       }
 
-      // Process outputs
+      // Then: Add new outputs to UTXO set
       for (let vout = 0; vout < tx.vout.length; vout++) {
         const output = tx.vout[vout];
-        const key = `${tx.txid}:${vout}`;
-
-        // Skip if already spent
-        if (spent.has(key)) {
-          continue;
-        }
-
         const address = output.scriptPubKey?.address ||
                        output.scriptPubKey?.addresses?.[0];
 
@@ -177,12 +175,21 @@ async function scanBlockByBlock() {
           continue;
         }
 
+        const key = `${tx.txid}:${vout}`;
         const amount = Math.round(output.value * 1e8);
-        const current = balances.get(address) || 0n;
-        balances.set(address, current + BigInt(amount));
+        utxoSet.set(key, { address, amount });
       }
     }
   }
+
+  // Aggregate UTXOs by address
+  const balances = new Map();
+  for (const { address, amount } of utxoSet.values()) {
+    const current = balances.get(address) || 0n;
+    balances.set(address, current + BigInt(amount));
+  }
+
+  console.log(`Found ${utxoSet.size} unspent outputs across ${balances.size} addresses`);
 
   const blockHash = await getBlockHash(opts.block);
   return { balances, blockHash };

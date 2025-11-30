@@ -12,7 +12,15 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src cli tests",
-    "lint:fix": "eslint src cli tests --fix"
+    "lint:fix": "eslint src cli tests --fix",
+    "deploy": "./scripts/run-container.sh",
+    "deploy:help": "./scripts/run-container.sh --help",
+    "backup": "./scripts/backup-db.sh",
+    "backup:help": "./scripts/backup-db.sh --help",
+    "restore": "./scripts/restore-db.sh",
+    "restore:help": "./scripts/restore-db.sh --help",
+    "ssl:init": "./scripts/init-ssl.sh",
+    "ssl:help": "./scripts/init-ssl.sh --help"
   },
   "keywords": [
     "unicity",

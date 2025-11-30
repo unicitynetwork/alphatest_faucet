@@ -37,7 +37,7 @@ COPY --from=builder /app/package.json ./
 
 # Copy entrypoint script
 COPY scripts/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN chmod +x /entrypoint.sh && chown faucet:faucet /entrypoint.sh
 
 # Create data and config directories
 RUN mkdir -p /app/data /app/config && \

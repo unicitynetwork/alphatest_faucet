@@ -2,19 +2,62 @@
 #
 # backup-db.sh - Backup faucet SQLite database
 #
-# Usage: ./backup-db.sh [OUTPUT_FILE]
+# Usage: ./backup-db.sh [OPTIONS] [OUTPUT_FILE]
 #
-# If OUTPUT_FILE is not specified, creates timestamped backup in current directory.
+# Options:
+#   -h, --help     Display this help message
+#   -s, --s3       Upload to S3 bucket (requires BACKUP_S3_BUCKET env var)
+#
+# Arguments:
+#   OUTPUT_FILE    Output file path (default: faucet-backup-YYYYMMDD-HHMMSS.tar.gz)
+#
+# Environment:
+#   BACKUP_S3_BUCKET   S3 bucket for remote backup storage
+#
+# Examples:
+#   ./backup-db.sh                          # Create timestamped backup
+#   ./backup-db.sh my-backup.tar.gz         # Create named backup
+#   ./backup-db.sh --help                   # Show this help
 #
 
 set -euo pipefail
+
+##
+## Display usage information
+##
+usage() {
+    sed -n '2,/^[^#]/{ /^#/s/^# \{0,1\}//p }' "$0"
+    exit 0
+}
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            usage
+            ;;
+        -s|--s3)
+            UPLOAD_S3=true
+            shift
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            usage
+            ;;
+        *)
+            OUTPUT_ARG="$1"
+            shift
+            ;;
+    esac
+done
 
 COMPOSE_PROJECT="alphatest_faucet"
 DATA_VOLUME="${COMPOSE_PROJECT}_faucet-data"
 CONFIG_VOLUME="${COMPOSE_PROJECT}_faucet-config"
 DEFAULT_OUTPUT="faucet-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+UPLOAD_S3="${UPLOAD_S3:-false}"
 
-OUTPUT_FILE="${1:-$DEFAULT_OUTPUT}"
+OUTPUT_FILE="${OUTPUT_ARG:-$DEFAULT_OUTPUT}"
 
 echo "=========================================="
 echo "  ALPHA Test Faucet - Database Backup"
@@ -68,14 +111,19 @@ echo "  File: $OUTPUT_FILE"
 echo "  Size: $ARCHIVE_SIZE (compressed)"
 
 # Optional: Upload to S3
-if [[ -n "${BACKUP_S3_BUCKET:-}" ]]; then
+if [[ "$UPLOAD_S3" == true ]] || [[ -n "${BACKUP_S3_BUCKET:-}" ]]; then
     echo ""
     echo "Uploading to S3..."
+    if [[ -z "${BACKUP_S3_BUCKET:-}" ]]; then
+        echo "Error: BACKUP_S3_BUCKET environment variable not set"
+        exit 1
+    fi
     if command -v aws &>/dev/null; then
         aws s3 cp "$OUTPUT_FILE" "s3://$BACKUP_S3_BUCKET/faucet-backups/"
         echo "Uploaded to: s3://$BACKUP_S3_BUCKET/faucet-backups/$(basename "$OUTPUT_FILE")"
     else
-        echo "Warning: AWS CLI not found. Skipping S3 upload."
+        echo "Error: AWS CLI not found"
+        exit 1
     fi
 fi
 
