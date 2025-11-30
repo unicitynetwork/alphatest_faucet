@@ -39,12 +39,18 @@ npm run lint
 # Create snapshot from Alpha blockchain
 node cli/snapshot.js --rpc <rpc-url> --block <block-number>
 
-# Docker deployment
-./scripts/run-container.sh --snapshot <block> --rpc <rpc-url>
+# Docker deployment (first time or full rebuild)
+./scripts/run-container.sh --snapshot <block> --no-ssl --port 8088
+
+# Reset and rescan balances
+./scripts/run-container.sh --reset --no-ssl --port 8088 --snapshot <block>
 
 # Database backup/restore
 ./scripts/backup-db.sh [output-file]
 ./scripts/restore-db.sh <backup-file>
+
+# Hot-reload HTML changes (no container rebuild needed)
+docker cp public/index.html alphatest-faucet:/app/public/index.html
 ```
 
 ## Architecture
