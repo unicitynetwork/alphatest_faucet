@@ -146,3 +146,6 @@ data/
 
 # Local development files
 initial_prompt.md
+
+# SSL certificates
+certbot/
