@@ -1124,7 +1124,7 @@
             <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
                 <h4 style="margin: 0 0 10px 0;">Faucet Proxy Configuration</h4>
                 <div style="display: flex; gap: 10px; align-items: center;">
-                    <input type="text" id="l3-proxy-url" value="http://localhost:8088" style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 13px;">
+                    <input type="text" id="l3-proxy-url" value="https://alpha-migri.dyndns.org" style="flex: 1; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 13px;">
                     <button onclick="l3TestConnection()" class="wallet-button" style="background-color: #4CAF50;">
                         Test Connection
                     </button>
@@ -14495,7 +14495,7 @@ Anyone with your master private key can access all your funds.`;
         // =====================================================
 
         // L3 Migration Configuration
-        const L3_DEFAULT_PROXY = 'http://localhost:8088';
+        const L3_DEFAULT_PROXY = 'https://alpha-migri.dyndns.org';
         const L3_MESSAGE_PREFIX = 'Alpha Signed Message:\n';
 
         let l3ProxyUrl = L3_DEFAULT_PROXY;

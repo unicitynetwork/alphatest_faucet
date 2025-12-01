@@ -21,14 +21,23 @@ L1-to-L3 ALPHA Test Faucet Proxy - enables holders of L1 ALPHA coins to mint equ
 # Install dependencies
 npm install
 
-# Run development server
+# Run development server (with auto-reload)
 npm run dev
 
 # Run production server
 npm start
 
-# Run tests
+# Run all tests
 npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run a single test file
+npx vitest run tests/unit/signatureService.test.js
+
+# Run tests matching a pattern
+npx vitest run -t "should verify valid signature"
 
 # Run tests with coverage
 npm run test:coverage
@@ -36,6 +45,13 @@ npm run test:coverage
 # Lint code
 npm run lint
 
+# Lint and auto-fix
+npm run lint:fix
+```
+
+### Snapshot & Deployment
+
+```bash
 # Create snapshot from Alpha blockchain
 node cli/snapshot.js --rpc <rpc-url> --block <block-number>
 
@@ -52,6 +68,15 @@ node cli/snapshot.js --rpc <rpc-url> --block <block-number>
 # Hot-reload HTML changes (no container rebuild needed)
 docker cp public/index.html alphatest-faucet:/app/public/index.html
 ```
+
+## Environment Variables
+
+Copy `.env.example` to `.env`. Key variables:
+- `PORT` - Server port (default: 3000)
+- `DB_PATH` - SQLite database path (default: ./data/faucet.db)
+- `FULCRUM_ENDPOINT` - Electrum WebSocket endpoint
+- `FAUCET_ENDPOINT` - Upstream L3 faucet URL
+- `ALPHA_RPC_URL/USER/PASS` - Alpha node RPC for snapshot creation
 
 ## Architecture
 
